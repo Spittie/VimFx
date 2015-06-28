@@ -19,18 +19,14 @@
 
 namespace = (name) -> "VimFx:#{ name }"
 
-globalMM = Cc['@mozilla.org/globalmessagemanager;1']
-  .getService(Ci.nsIMessageListenerManager)
+defaultMM =
+  if IS_FRAME_SCRIPT
+    this
+  else
+    Cc['@mozilla.org/globalmessagemanager;1']
+      .getService(Ci.nsIMessageListenerManager)
 
-getMessageManager = (obj) -> switch
-  when obj == 'global'
-    globalMM
-  when obj.selectedBrowser # `obj == window.gBrowser`
-    selectedBrowser.messageManager
-  else # `obj == window`
-    obj.messageManager
-
-load = (messageManager = globalMM, name) ->
+load = (name, messageManager = defaultMM) ->
   # Randomize URI to work around bug 1051238.
   url = "chrome://vimfx/content/#{ name }.js?#{ Math.random() }"
   messageManager.loadFrameScript(url, true)
@@ -38,24 +34,27 @@ load = (messageManager = globalMM, name) ->
     messageManager.removeDelayedFrameScript(url)
   )
 
-listen = (messageManager = globalMM, name, listener) ->
+listen = (name, listener, messageManager = defaultMM) ->
   namespacedName = namespace(name)
   messageManager.addMessageListener(namespacedName, listener)
   module.onShutdown(->
     messageManager.removeMessageListener(namespacedName, listener)
   )
 
-listenOnce = (messageManager = globalMM, name, listener) ->
+listenOnce = (name, listener, messageManager = defaultMM) ->
   namespacedName = namespace(name)
   fn = (data) ->
     messageManager.removeMessageListener(namespacedName, fn)
     listener(data)
   messageManager.addMessageListener(namespacedName, fn)
 
-send = (messageManager = globalMM, name, data = null, callback = null) ->
+send = (name, data = null, messageManager = defaultMM, callback = null) ->
+  if typeof messageManager == 'function'
+    callback = messageManager
+    messageManager = defaultMM
   namespacedName = namespace(name)
   if callback
-    listenOnce(messageManager, "#{ namespacedName }:callback", callback)
+    listenOnce("#{ namespacedName }:callback", callback, messageManager)
   if messageManager.broadcastAsyncMessage
     messageManager.broadcastAsyncMessage(namespacedName, data)
   else

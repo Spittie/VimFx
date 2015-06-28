@@ -19,6 +19,7 @@
 
 help      = require('./help')
 translate = require('./l10n')
+utils     = require('./utils')
 
 BUTTON_ID = 'VimFxButton'
 
@@ -39,8 +40,11 @@ injectButton = (vimfx, window) ->
     onCreated: (node) ->
       button = node
       button.setAttribute('vimfx-mode', 'normal')
-      vimfx.on('modeChange',       updateButton.bind(null, button))
-      vimfx.on('currentVimChange', updateButton.bind(null, button))
+      vimfx.on('modeChange', updateButton.bind(null, button))
+      utils.listen(window, 'TabSelect', ->
+        vim = vimfx.getCurrentVim(window)
+        updateButton(button, vim)
+      )
   })
   module.onShutdown(cui.destroyWidget.bind(cui, BUTTON_ID))
 

@@ -20,7 +20,6 @@
 notation = require('vim-like-key-notation')
 prefs    = require('./prefs')
 utils    = require('./utils')
-Vim      = require('./vim')
 
 DIGIT     = /^\d$/
 FORCE_KEY = '<force>'
@@ -28,24 +27,19 @@ FORCE_KEY = '<force>'
 class VimFx extends utils.EventEmitter
   constructor: (@modes, @options) ->
     super()
-    @vimBucket = new utils.Bucket(((window) => new Vim(window, this)), this)
+    @vims = new WeakMap()
     @createKeyTrees()
     @reset()
     @on('modechange', ({mode}) => @reset(mode))
-    @currentVim = null
-    @on('bucket.get', (vim) =>
-      return if @currentVim == vim
-      @currentVim = vim
-      @emit('currentVimChange', vim)
-    )
-    @customCommandCounter = 0
+
+  getCurrentVim: (window) -> @vims.get(window.gBrowser.selectedBrowser)
 
   reset: (mode = null) ->
     @currentKeyTree = if mode then @keyTrees[mode] else {}
     @lastInputTime = 0
     @count = ''
 
-  getCurrentLocation: -> @currentVim?.window.location
+  getCurrentLocation: -> null # @currentVim?.window.location # FIXME
 
   createKeyTrees: ->
     {@keyTrees, @forceCommands, @errors} = createKeyTrees(@modes)

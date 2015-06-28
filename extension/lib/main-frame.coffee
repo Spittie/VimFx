@@ -17,5 +17,14 @@
 # along with VimFx.  If not, see <http://www.gnu.org/licenses/>.
 ###
 
+commands       = require('./commands-frame')
+events         = require('./events-frame')
+messageManager = require('./message-manager')
+
 module.exports = ->
-  dump('hello, world!')
+  state = events.addListeners()
+
+  messageManager.listen('runCommand', ({ data: { name, data } }) ->
+    result = commands[name](Object.assign({state}, data))
+    messageManager.send("#{ name }:callback", result) if data.callback
+  )

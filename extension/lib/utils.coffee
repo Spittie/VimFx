@@ -28,27 +28,15 @@ HTMLButtonElement   = Ci.nsIDOMHTMLButtonElement
 HTMLInputElement    = Ci.nsIDOMHTMLInputElement
 HTMLTextAreaElement = Ci.nsIDOMHTMLTextAreaElement
 HTMLSelectElement   = Ci.nsIDOMHTMLSelectElement
+HTMLFrameElement    = Ci.nsIDOMHTMLFrameElement
+HTMLIFrameElement   = Ci.nsIDOMHTMLIFrameElement
 XULDocument         = Ci.nsIDOMXULDocument
 XULButtonElement    = Ci.nsIDOMXULButtonElement
 XULControlElement   = Ci.nsIDOMXULControlElement
 XULMenuListElement  = Ci.nsIDOMXULMenuListElement
 XULTextBoxElement   = Ci.nsIDOMXULTextBoxElement
 
-class Bucket
-  constructor: (@newFunc, @observer = null) ->
-    @bucket = new WeakMap()
-
-  get: (obj) ->
-    if @bucket.has(obj)
-      value = @bucket.get(obj)
-    else
-      value = @newFunc(obj)
-      @bucket.set(obj, value)
-    @observer.emit('bucket.get', value) if @observer
-    return value
-
-  forget: (obj) ->
-    @bucket.delete(obj)
+USE_CAPTURE = true
 
 class EventEmitter
   constructor: ->
@@ -62,40 +50,20 @@ class EventEmitter
       listener(data)
     return
 
-getEventWindow = (event) ->
-  if event.originalTarget instanceof Window
-    return event.originalTarget
-  else
-    doc = event.originalTarget.ownerDocument or event.originalTarget
-    if doc instanceof HTMLDocument or doc instanceof XULDocument
-      return doc.defaultView
-
-getEventRootWindow = (event) ->
-  return unless window = getEventWindow(event)
-  return getRootWindow(window)
-
-getEventCurrentTabWindow = (event) ->
-  return unless rootWindow = getEventRootWindow(event)
-  return getCurrentTabWindow(rootWindow)
-
-getRootWindow = (window) ->
-  return window
-    .QueryInterface(Ci.nsIInterfaceRequestor)
-    .getInterface(Ci.nsIWebNavigation)
-    .QueryInterface(Ci.nsIDocShellTreeItem)
-    .rootTreeItem
-    .QueryInterface(Ci.nsIInterfaceRequestor)
-    .getInterface(Window)
-
-getCurrentTabWindow = (window) ->
-  return window.gBrowser.selectedTab.linkedBrowser.contentWindow
-
 blurActiveElement = (window) ->
   # Only blur focusable elements, in order to interfere with the browser as
   # little as possible.
-  { activeElement } = window.document
+  activeElement = getActiveElement(window)
   if activeElement and activeElement.tabIndex > -1
     activeElement.blur()
+
+getActiveElement = (window) ->
+  { activeElement } = window.document
+  if activeElement instanceof HTMLFrameElement or
+     activeElement instanceof HTMLIFrameElement
+    return getActiveElement(activeElement.contentWindow)
+  else
+    return activeElement
 
 # Focus an element and tell Firefox that the focus happened because of a user
 # keypress (not just because some random programmatic focus).
@@ -194,6 +162,16 @@ simulateClick = (element) ->
 isEventSimulated = (event) ->
   return simulated_events.has(event)
 
+listen = (element, eventName, listener) ->
+  element.addEventListener(eventName, listener, USE_CAPTURE)
+  module.onShutdown(->
+    element.removeEventListener(eventName, listener, USE_CAPTURE)
+  )
+
+suppressEvent = (event) ->
+  event.preventDefault()
+  event.stopPropagation()
+
 # Write a string to the system clipboard.
 writeToClipboard = (text) ->
   clipboardHelper = Cc['@mozilla.org/widget/clipboardhelper;1']
@@ -266,15 +244,10 @@ class Counter
   tick: -> @value += @step
 
 module.exports = {
-  Bucket
   EventEmitter
-  getEventWindow
-  getEventRootWindow
-  getEventCurrentTabWindow
-  getRootWindow
-  getCurrentTabWindow
 
   blurActiveElement
+  getActiveElement
   focusElement
   isProperLink
   isTextInputElement
@@ -288,6 +261,8 @@ module.exports = {
 
   simulateClick
   isEventSimulated
+  listen
+  suppressEvent
   writeToClipboard
   timeIt
 

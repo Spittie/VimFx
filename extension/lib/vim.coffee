@@ -18,55 +18,60 @@
 # along with VimFx.  If not, see <http://www.gnu.org/licenses/>.
 ###
 
-utils = require('./utils')
+messageManager = require('./message-manager')
+utils          = require('./utils')
 
 class Vim
-  constructor: (@window, @parent) ->
-    @rootWindow = utils.getRootWindow(@window) # For convenience.
-    @storage = {}
-    @resetState(true)
-
-  resetState: (force = false) ->
-    @state =
-      lastInteraction: null
-      lastAutofocusPrevention: null
-      scrollableElements: new WeakMap()
-      lastFocusedTextInput: null
+  constructor: (@window, @_parent) ->
+    Object.defineProperty(this, 'options', {
+      get: => @_parent.options
+      enumerable: true
+    })
+    @_storage = {}
 
     if @isBlacklisted()
       @enterMode('ignore')
     else
       @enterMode('normal') if force or @mode == 'ignore'
 
-    @parent.emit('load', {vim: this, location: @window.location})
+    @_parent.emit('load', {vim: this, location: @window.location}) # FIXME
 
   isBlacklisted: ->
-    url = @rootWindow.gBrowser.currentURI.spec
-    return @parent.options.black_list.some((regex) -> regex.test(url))
+    url = @window.gBrowser.currentURI.spec
+    return @options.black_list.some((regex) -> regex.test(url))
 
   # `args` is an array of arguments to be passed to the mode's `onEnter` method.
   enterMode: (mode, args...) ->
-    return if @mode == mode
+    return false if @mode == mode
 
-    unless utils.has(@parent.modes, mode)
-      modes = Object.keys(@parent.modes).join(', ')
+    unless utils.has(@_parent.modes, mode)
+      modes = Object.keys(@_parent.modes).join(', ')
       throw new Error("VimFx: Unknown mode. Available modes are: #{ modes }.
                        Got: #{ mode }")
 
-    @call('onLeave')
+    @_call('onLeave') if @mode?
     @mode = mode
-    @call('onEnter', {args})
-    @parent.emit('modeChange', this) if @parent.currentVim == this
+    @_call('onEnter', null, args...)
+    @_parent.emit('modeChange', this) if @_parent.getCurrentVim() == this
+    return true
 
   onInput: (event) ->
-    match = @parent.consumeKeyEvent(event, this)
+    match = @_parent.consumeKeyEvent(event, this)
     return null unless match
-    suppress = @call('onInput', {event, count: match.count}, match)
+    suppress = @_call('onInput', {event, count: match.count}, match)
     return suppress
 
-  call: (method, data = {}, extraArgs...) ->
-    currentMode = @parent.modes[@mode]
+  _call: (method, data = {}, extraArgs...) ->
     args = Object.assign({vim: this, storage: @storage[@mode] ?= {}}, data)
-    currentMode?[method].call(currentMode, args, extraArgs...)
+    currentMode = @_parent.modes[@mode]
+    currentMode[method].call(currentMode, args, extraArgs...)
+
+  _run: (name, data = {}, callback = null) ->
+    fn = null
+    if callback
+      data.callback = true
+      fn = ({ data }) -> callback(data)
+    messageManager.send('runCommand', {name, data}, fn,
+                        @window.gBrowser.selectedBrowser.messageManager)
 
 module.exports = Vim
