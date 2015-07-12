@@ -123,7 +123,9 @@ createMarkers = (window, viewport, groups, filter, parents = []) ->
   { document } = window
 
   localGetElementShape = getElementShape.bind(null, window, viewport, parents)
-  for element in getElements(document, viewport) when element instanceof Element
+  # getElements can return undefined. In that case, we use an empty array
+  elements = getElements(document, viewport) or []
+  for element in elements when element instanceof Element
     continue unless marker = filter(element, localGetElementShape)
     if marker.parent
       groups.combined.push(marker)
