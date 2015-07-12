@@ -194,6 +194,9 @@ getElements = (document, viewport) -> switch
       return
     getAllRegular(document.documentElement)
     return elements
+  # If we don't know the type of `document` then we're going to return
+  # an empty array
+  else return []
 
 # Returns the “shape” of `element`:
 #
